@@ -1,0 +1,64 @@
+{
+  "display_title": {
+    "description": "状态卡标题",
+    "type": "string",
+    "default": "YUKI STATUS",
+    "hint": "显示在状态卡左上角。"
+  },
+  "fallback_bot_name": {
+    "description": "默认机器人昵称",
+    "type": "string",
+    "default": "AstrBot",
+    "hint": "无法从平台读取机器人昵称时使用。"
+  },
+  "avatar_file": {
+    "description": "默认头像图片",
+    "type": "file",
+    "file_types": [".png", ".jpg", ".jpeg", ".webp"],
+    "default": [],
+    "hint": "平台头像获取失败时使用。"
+  },
+  "background_file": {
+    "description": "背景图片",
+    "type": "file",
+    "file_types": [".png", ".jpg", ".jpeg", ".webp"],
+    "default": [],
+    "hint": "上传后会自动应用高斯模糊、增强饱和度和液态玻璃背景效果。"
+  },
+  "show_model_stats": {
+    "description": "显示模型调用统计",
+    "type": "bool",
+    "default": true,
+    "hint": "控制模型调用柱状图、模型调用排名和会话 token 排名。"
+  },
+  "show_message_stats": {
+    "description": "显示消息统计",
+    "type": "bool",
+    "default": true,
+    "hint": "控制最近 24 小时消息曲线。"
+  },
+  "network_sample_interval_seconds": {
+    "description": "网络速率采样间隔（秒）",
+    "type": "float",
+    "default": 5,
+    "slider": {
+      "min": 1,
+      "max": 60,
+      "step": 1
+    },
+    "invisible": true,
+    "hint": "兼容旧版本保留，当前默认状态卡布局不显示网络图表。"
+  },
+  "network_window_minutes": {
+    "description": "网络折线保留时间（分钟）",
+    "type": "float",
+    "default": 30,
+    "slider": {
+      "min": 1,
+      "max": 120,
+      "step": 1
+    },
+    "invisible": true,
+    "hint": "兼容旧版本保留，当前默认状态卡布局不显示网络图表。"
+  }
+}
