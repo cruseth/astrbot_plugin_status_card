@@ -262,7 +262,6 @@ class StatusCardPlugin(Star):
 
     async def _collect_session_info(self, event: AstrMessageEvent) -> dict[str, str]:
         session_id = str(getattr(event, "unified_msg_origin", "") or "")
-        llm_enabled = await self._is_session_llm_enabled(session_id)
         provider = self._get_using_provider(session_id)
         provider_id = "-"
         model_name = "-"
@@ -277,13 +276,8 @@ class StatusCardPlugin(Star):
 
         persona_name = await self._get_current_persona_name(event, session_id)
         token_stats = await self._collect_session_token_stats(session_id)
-        if llm_enabled is None:
-            llm_label = "未知" if provider is None else "开启"
-        else:
-            llm_label = "开启" if llm_enabled else "关闭"
 
         return {
-            "llm_enabled": self._safe(llm_label),
             "model": self._safe(model_name),
             "provider": self._safe(provider_id),
             "persona": self._safe(persona_name),
@@ -339,24 +333,6 @@ class StatusCardPlugin(Star):
             "input": self._fmt_count(input_total),
             "output": self._fmt_count(output),
         }
-
-    async def _is_session_llm_enabled(self, session_id: str) -> bool | None:
-        if not session_id:
-            return None
-        acl_plugin = self._find_star_instance(
-            {
-                "astrbot_plugin_llm_session_acl",
-                "LLMSessionACLPlugin",
-                "llm_session_acl",
-            }
-        )
-        checker = getattr(acl_plugin, "_is_llm_enabled_for", None) if acl_plugin is not None else None
-        if callable(checker):
-            try:
-                return bool(checker(session_id))
-            except Exception as exc:
-                logger.debug(f"[StatusCard] llm acl status unavailable: {exc}")
-        return None
 
     def _get_using_provider(self, session_id: str) -> Any:
         getter = getattr(self.context, "get_using_provider", None)
@@ -460,27 +436,6 @@ class StatusCardPlugin(Star):
             return str(persona.get("name") or persona_id or "-")
         name = getattr(persona, "name", None) or getattr(persona, "persona_id", None)
         return str(name or persona_id or "-")
-
-    def _find_star_instance(self, names: set[str]) -> Any:
-        getter = getattr(self.context, "get_all_stars", None)
-        if not callable(getter):
-            return None
-        try:
-            stars = getter() or []
-        except Exception:
-            return None
-        for metadata in stars:
-            candidates = {
-                str(getattr(metadata, "name", "") or ""),
-                str(getattr(metadata, "display_name", "") or ""),
-                str(getattr(metadata, "root_dir_name", "") or ""),
-            }
-            star_cls = getattr(metadata, "star_cls", None)
-            if star_cls is not None:
-                candidates.add(star_cls.__class__.__name__)
-            if candidates & names:
-                return star_cls
-        return None
 
     async def _get_client(self, event: AstrMessageEvent) -> Any:
         client = getattr(event, "bot", None)
@@ -1752,7 +1707,6 @@ body {
             <div class="chip ok">在线</div>
             <div class="chip">好友 {{ platform.friends }}</div>
             <div class="chip">群聊 {{ platform.groups }}</div>
-            <div class="chip">LLM {{ session.llm_enabled }}</div>
             <div class="chip">模型 {{ session.model }}</div>
             <div class="chip">人格 {{ session.persona }}</div>
             <div class="chip">{{ bot.status }}</div>

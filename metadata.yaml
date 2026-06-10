@@ -1,8 +1,8 @@
 name: astrbot_plugin_status_card
 display_name: Status Card
-desc: 生成 iOS 液态玻璃风格的 AstrBot 状态卡片，展示系统性能、WebUI 统计、会话 LLM 状态、消息趋势和模型调用。
+desc: 生成 iOS 液态玻璃风格的 AstrBot 状态卡片，展示系统性能、WebUI 统计、会话模型与人格、消息趋势和模型调用。
 short_desc: 发送 /状态 或 /status 回复状态卡片。
 version: v1.0.0
 author: Codex
-repo: ""
+repo: https://github.com/cruseth/astrbot_plugin_status_card
 astrbot_version: ">=4.16"

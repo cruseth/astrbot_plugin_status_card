@@ -1,6 +1,6 @@
 # AstrBot Status Card
 
-生成一张 iOS 液态玻璃风格的 AstrBot 状态卡片。发送 `/状态` 或 `/status` 后，插件会渲染机器人身份、系统性能、WebUI 统计、当前会话 LLM 状态、会话 token、消息趋势和模型调用统计。
+生成一张 iOS 液态玻璃风格的 AstrBot 状态卡片。发送 `/状态` 或 `/status` 后，插件会渲染机器人身份、系统性能、WebUI 统计、当前会话模型与人格、会话 token、消息趋势和模型调用统计。
 
 ## 功能
 
@@ -8,7 +8,6 @@
 - 系统性能：CPU、内存、进程内存。
 - WebUI 统计概览：平台实例数、今日模型 token、当前会话 token、已启用插件数。
 - 当前会话信息：
-  - 联动 `astrbot_plugin_llm_session_acl` 显示当前会话 LLM 开启/关闭状态。
   - 从 AstrBot 当前会话配置读取正在使用的 LLM 模型。
   - 从 AstrBot 官方会话/人格逻辑读取当前生效人格。
 - 消息概览：最近 24 小时消息曲线和消息总量。
@@ -36,9 +35,7 @@
    /status
    ```
 
-## 可选联动
-
-安装并启用 `astrbot_plugin_llm_session_acl` 后，状态卡会显示当前会话的 LLM 开启状态。未安装该插件时，如果当前会话存在可用 Provider，则状态显示为开启；无法判断时显示未知。
+## 当前会话信息
 
 当前会话模型和人格读取逻辑参考 AstrBot 官方 `builtin_commands`：
 

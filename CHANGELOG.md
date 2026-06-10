@@ -9,7 +9,6 @@
   - 边缘高光
   - 背景高斯模糊
   - 背景饱和度增强
-- 新增当前会话 LLM 状态显示，可联动 `astrbot_plugin_llm_session_acl`。
 - 新增当前会话模型和人格显示，读取方式对齐 AstrBot 官方 `builtin_commands`。
 - 新增当前会话 token 统计。
 - 新增最近 24 小时消息曲线。
