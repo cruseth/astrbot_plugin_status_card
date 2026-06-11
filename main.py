@@ -560,9 +560,10 @@ class StatusCardPlugin(Star):
         max_value = max(values) or 1
         width = 520
         height = 128
+        chart_values = [float(v) for v in values]
         return {
-            "path": self._line_path([float(v) for v in values], float(max_value), width, height),
-            "area_path": self._area_path([float(v) for v in values], float(max_value), width, height),
+            "path": self._smooth_line_path(chart_values, float(max_value), width, height),
+            "area_path": self._smooth_area_path(chart_values, float(max_value), width, height),
             "max": self._display_number(max_value),
             "latest": self._display_number(values[-1] if values else 0),
             "labels": ["24h", "18h", "12h", "6h", "now"],
@@ -1870,6 +1871,42 @@ body {
         if not line:
             return ""
         return f"{line} L {width} {height} L 0 {height} Z"
+
+    def _smooth_line_path(self, values: list[float], max_value: float, width: int, height: int) -> str:
+        coords = self._chart_coords(values, max_value, width, height)
+        if not coords:
+            return ""
+        first = coords[0]
+        if len(coords) == 1:
+            return f"M {first[0]} {first[1]}"
+
+        segments = []
+        for (x0, y0), (x1, y1) in zip(coords, coords[1:]):
+            dx = round((x1 - x0) * 0.45, 2)
+            c1x = round(x0 + dx, 2)
+            c2x = round(x1 - dx, 2)
+            segments.append(f"C {c1x} {y0}, {c2x} {y1}, {x1} {y1}")
+        return f"M {first[0]} {first[1]} {' '.join(segments)}"
+
+    def _smooth_area_path(self, values: list[float], max_value: float, width: int, height: int) -> str:
+        line = self._smooth_line_path(values, max_value, width, height)
+        if not line:
+            return ""
+        return f"{line} L {width} {height} L 0 {height} Z"
+
+    def _chart_coords(self, values: list[float], max_value: float, width: int, height: int) -> list[tuple[float, float]]:
+        if not values:
+            return []
+        if len(values) == 1:
+            x_values = [0]
+        else:
+            x_values = [(idx / (len(values) - 1)) * width for idx in range(len(values))]
+
+        coords: list[tuple[float, float]] = []
+        for x, value in zip(x_values, values):
+            y = height - (value / max_value) * (height - 12) - 6
+            coords.append((round(x, 2), round(max(min(y, height), 0), 2)))
+        return coords
 
     def _sample_interval_guess(self) -> float:
         if len(self._network_points) < 2:
