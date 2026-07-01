@@ -169,7 +169,7 @@ class StatusCardPlugin(Star):
         fallback_name = str(self._cfg("fallback_bot_name", "AstrBot"))
         bot_id = self._call_event(event, "get_self_id") or "-"
         name = fallback_name
-        avatar = self._config_file_uri("avatar_file")
+        avatar = ""
 
         client = await self._get_client(event)
         if client is not None:
@@ -228,13 +228,7 @@ class StatusCardPlugin(Star):
             ]
         )
         model_chart = self._build_model_bar_chart(provider.get("trend", {}).get("model_series", []))
-        model_daily_rank = self._rank_token_items(
-            [
-                {"name": item.get("provider_model", "Unknown"), "count": int(item.get("tokens", 0) or 0)}
-                for item in provider.get("today_by_model", [])[:6]
-                if isinstance(item, dict)
-            ]
-        )
+        model_daily_rank = self._model_detail_items(provider.get("today_by_model", [])[:6])
         memory = base.get("memory", {}) if isinstance(base.get("memory"), dict) else {}
 
         return {
@@ -246,7 +240,6 @@ class StatusCardPlugin(Star):
                     "value": session.get("token_total", "-"),
                     "sub": f"输入 {session.get('token_input', '-')} / 输出 {session.get('token_output', '-')}",
                 },
-                {"label": "插件数量", "value": self._display_number(base.get("plugin_count")), "sub": "当前已启用插件"},
             ],
             "message_total": self._display_number(message_total),
             "message_rank": message_rank,
@@ -671,6 +664,59 @@ class StatusCardPlugin(Star):
             item["value"] = self._fmt_count(item["count"]) if item["count"] else "-"
         return ranked
 
+    def _model_detail_items(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            total_tokens = int(item.get("tokens", item.get("total_tokens", 0)) or 0)
+            calls = int(item.get("calls", 0) or 0)
+            input_tokens = int(item.get("input_tokens", 0) or 0)
+            output_tokens = int(item.get("output_tokens", 0) or 0)
+            cached_tokens = int(item.get("cached_tokens", 0) or 0)
+            cache_hit_rate = float(item.get("cache_hit_rate", 0) or 0)
+            success_rate = float(item.get("success_rate", 0) or 0)
+            avg_latency_ms = float(item.get("avg_latency_ms", 0) or 0)
+            rows.append(
+                {
+                    "name": self._safe(item.get("provider_model", item.get("name", "Unknown"))),
+                    "value": self._fmt_count(total_tokens) if total_tokens else "-",
+                    "calls": self._fmt_count(calls) if calls else "-",
+                    "input": self._fmt_count(input_tokens) if input_tokens else "-",
+                    "output": self._fmt_count(output_tokens) if output_tokens else "-",
+                    "cached": self._fmt_count(cached_tokens) if cached_tokens else "-",
+                    "cache_rate": f"{cache_hit_rate * 100:.0f}%" if cache_hit_rate else "0%",
+                    "latency": self._fmt_duration_ms(avg_latency_ms),
+                    "success": f"{success_rate * 100:.0f}%" if calls else "-",
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _fmt_duration_ms(value: float) -> str:
+        if value <= 0:
+            return "-"
+        if value >= 1000:
+            return f"{value / 1000:.1f}s"
+        return f"{value:.0f}ms"
+
+    @staticmethod
+    def _empty_model_detail_row() -> dict[str, Any]:
+        return {
+            "provider_model": "Unknown",
+            "tokens": 0,
+            "calls": 0,
+            "input_tokens": 0,
+            "cached_tokens": 0,
+            "output_tokens": 0,
+            "success_calls": 0,
+            "latency_total_ms": 0.0,
+            "latency_samples": 0,
+            "cache_hit_rate": 0.0,
+            "success_rate": 0.0,
+            "avg_latency_ms": 0.0,
+        }
+
     def _runtime_cards(self) -> list[dict[str, str]]:
         proc = psutil.Process(os.getpid())
         mem = proc.memory_info()
@@ -712,12 +758,6 @@ class StatusCardPlugin(Star):
         ]
 
     def _background_style(self, avatar: str = "") -> str:
-        path = self._config_file_uri("background_file")
-        if path:
-            return (
-                f"--glass-bg-image: url('{self._safe(path)}'); "
-                "background: linear-gradient(150deg, rgba(255, 250, 244, .52), rgba(232, 252, 246, .50));"
-            )
         palette = self._monet_palette_from_avatar(avatar)
         return (
             "background: "
@@ -772,7 +812,6 @@ class StatusCardPlugin(Star):
             "accent-soft": accent_soft,
             "accent-2": companion,
             "warm": warm,
-            "online": color(0.31, 0.48, 0.90),
             "dark-text": dark_text,
             "ring-track": rgba(ring_track, 0.74),
             "panel-bg": rgba(panel, 0.82),
@@ -838,57 +877,6 @@ class StatusCardPlugin(Star):
             out_path = path.with_name(f"{path.stem}_status_card.png")
             cropped.save(out_path)
         return str(out_path)
-
-    def _config_file_uri(self, key: str) -> str:
-        value = self._cfg(key, [])
-        candidate = self._first_file_candidate(value)
-        if not candidate:
-            return ""
-        resolved = self._resolve_uploaded_file_candidate(key, candidate)
-        if resolved:
-            candidate = resolved
-        return self._normalize_file_url(candidate)
-
-    def _first_file_candidate(self, value: Any) -> str:
-        if not value:
-            return ""
-        if isinstance(value, str):
-            return value
-        if isinstance(value, dict):
-            for key in ("path", "file", "url", "name"):
-                item = value.get(key)
-                if item:
-                    return str(item)
-            return ""
-        if isinstance(value, list):
-            for item in value:
-                candidate = self._first_file_candidate(item)
-                if candidate:
-                    return candidate
-        return ""
-
-    def _resolve_uploaded_file_candidate(self, key: str, candidate: str) -> str:
-        if candidate.startswith(("http://", "https://", "file://")):
-            return candidate
-        path = Path(candidate)
-        if path.exists():
-            return str(path)
-        try:
-            from astrbot.core.utils.astrbot_path import get_astrbot_data_path
-        except Exception:
-            return candidate
-        try:
-            base = Path(get_astrbot_data_path())
-            for root in (
-                base / "plugins" / PLUGIN_NAME / "files" / key,
-                base / "plugin_data" / PLUGIN_NAME / "files" / key,
-            ):
-                maybe = root / candidate
-                if maybe.exists():
-                    return str(maybe)
-        except Exception:
-            return candidate
-        return candidate
 
     def _find_db_helper(self) -> Any:
         candidates = [self.context]
@@ -1040,6 +1028,7 @@ class StatusCardPlugin(Star):
             total_by_umo: dict[str, int] = defaultdict(int)
             total_by_bucket: dict[int, int] = defaultdict(int)
             today_by_model: dict[str, int] = defaultdict(int)
+            today_model_detail: dict[str, dict[str, Any]] = defaultdict(self._empty_model_detail_row)
             today_by_provider: dict[str, int] = defaultdict(int)
             range_total_tokens = 0
             range_total_output_tokens = 0
@@ -1092,9 +1081,34 @@ class StatusCardPlugin(Star):
                     today_total_tokens += token_total
                     today_by_model[provider_model] += token_total
                     today_by_provider[provider_id] += token_total
+                    input_other = int(getattr(record, "token_input_other", 0) or 0)
+                    input_cached = int(getattr(record, "token_input_cached", 0) or 0)
+                    output_tokens = int(getattr(record, "token_output", 0) or 0)
+                    row = today_model_detail[provider_model]
+                    row["provider_model"] = provider_model
+                    row["tokens"] += token_total
+                    row["calls"] += 1
+                    row["input_tokens"] += input_other
+                    row["cached_tokens"] += input_cached
+                    row["output_tokens"] += output_tokens
+                    if getattr(record, "status", None) != "error":
+                        row["success_calls"] += 1
+                    start_time = float(getattr(record, "start_time", 0) or 0)
+                    end_time = float(getattr(record, "end_time", 0) or 0)
+                    if end_time > start_time:
+                        row["latency_total_ms"] += (end_time - start_time) * 1000
+                        row["latency_samples"] += 1
 
             sorted_provider_ids = sorted(total_by_provider.keys(), key=lambda item: total_by_provider[item], reverse=True)
             sorted_model_names = sorted(total_by_model.keys(), key=lambda item: total_by_model[item], reverse=True)
+            today_model_rows = []
+            for row in today_model_detail.values():
+                calls = int(row["calls"] or 0)
+                cache_base = int(row["input_tokens"] or 0) + int(row["cached_tokens"] or 0)
+                row["cache_hit_rate"] = (row["cached_tokens"] / cache_base) if cache_base else 0
+                row["success_rate"] = (row["success_calls"] / calls) if calls else 0
+                row["avg_latency_ms"] = (row["latency_total_ms"] / row["latency_samples"]) if row["latency_samples"] else 0
+                today_model_rows.append(row)
             return {
                 "days": days,
                 "trend": {
@@ -1133,8 +1147,8 @@ class StatusCardPlugin(Star):
                 "today_total_tokens": today_total_tokens,
                 "today_total_calls": today_total_calls,
                 "today_by_model": [
-                    {"provider_model": model_name, "tokens": tokens}
-                    for model_name, tokens in sorted(today_by_model.items(), key=lambda item: item[1], reverse=True)
+                    row
+                    for row in sorted(today_model_rows, key=lambda item: item["tokens"], reverse=True)
                 ],
                 "today_by_provider": [
                     {"provider_id": provider_id, "tokens": tokens}
@@ -1406,7 +1420,6 @@ class StatusCardPlugin(Star):
   --accent-soft: #8fcac3;
   --accent-2: #6da1b5;
   --warm: #c9a56f;
-  --online: #4a9b74;
   --dark-text: #193536;
   --ring-track: rgba(178, 216, 211, .74);
   --panel-bg: linear-gradient(145deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .30));
@@ -1419,8 +1432,12 @@ class StatusCardPlugin(Star):
   --ring-inner: rgba(255, 255, 255, .70);
   --bar-bg: rgba(195, 221, 216, .66);
   --icon-bg: rgba(59, 132, 125, .12);
-  --glass-bg-image: none;
   --glass-blur: 22px;
+  --shell-blur: 28px;
+  --chip-blur: 16px;
+  --page-saturate: 1.18;
+  --bg-blur-layer-opacity: .90;
+  --bg-overlay-opacity: 1;
 }
 html {
   margin: 0;
@@ -1443,7 +1460,7 @@ body {
   padding: 18px;
   background-size: cover;
   background-position: center;
-  filter: saturate(1.18);
+  filter: saturate(var(--page-saturate));
 }
 .page::before {
   content: "";
@@ -1451,13 +1468,12 @@ body {
   inset: -34px;
   z-index: 0;
   background-image:
-    linear-gradient(135deg, rgba(255,255,255,.24), rgba(255,255,255,.04)),
-    var(--glass-bg-image);
+    linear-gradient(135deg, rgba(255,255,255,.24), rgba(255,255,255,.04));
   background-size: cover;
   background-position: center;
   filter: blur(24px) saturate(1.45) contrast(1.08);
   transform: scale(1.05);
-  opacity: .90;
+  opacity: var(--bg-blur-layer-opacity);
 }
 .page::after {
   content: "";
@@ -1468,7 +1484,9 @@ body {
     radial-gradient(circle at 14% 4%, color-mix(in srgb, var(--accent-soft) 40%, transparent) 0, transparent 26%),
     radial-gradient(circle at 82% 12%, color-mix(in srgb, var(--warm) 36%, transparent) 0, transparent 24%),
     linear-gradient(145deg, rgba(255,255,255,.30), rgba(255,255,255,.08));
+  opacity: var(--bg-overlay-opacity);
   backdrop-filter: blur(6px) saturate(1.25);
+  -webkit-backdrop-filter: blur(6px) saturate(1.25);
 }
 .shell {
   position: relative;
@@ -1477,8 +1495,8 @@ body {
   border: 1px solid rgba(255, 255, 255, .52);
   border-radius: 28px;
   background: var(--shell-bg);
-  backdrop-filter: blur(28px) saturate(1.55);
-  -webkit-backdrop-filter: blur(28px) saturate(1.55);
+  backdrop-filter: blur(var(--shell-blur)) saturate(1.35);
+  -webkit-backdrop-filter: blur(var(--shell-blur)) saturate(1.35);
   box-shadow:
     0 28px 64px rgba(26, 54, 56, .20),
     inset 0 1px 0 rgba(255, 255, 255, .78),
@@ -1520,19 +1538,24 @@ body {
   z-index: 1;
 }
 .hero {
-  padding: 20px 18px 22px;
-  min-height: 214px;
+  padding: 14px 18px;
+  min-height: 128px;
   background: var(--hero-bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.masthead {
+  margin: 0 2px 14px;
 }
 .title {
   color: var(--accent);
-  font-size: 20px;
-  font-weight: 800;
+  font-size: 26px;
+  font-weight: 900;
   letter-spacing: 5px;
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
-.rule { height: 1px; background: var(--rule); margin-bottom: 14px; }
-.bot-name { font-size: 20px; font-weight: 800; margin-bottom: 10px; }
+.rule { height: 1px; background: var(--rule); }
 .hero-row { display: flex; gap: 16px; align-items: center; }
 .avatar-wrap { position: relative; width: 88px; height: 88px; flex: 0 0 auto; }
 .avatar {
@@ -1548,7 +1571,6 @@ body {
   color: var(--dark-text); background: var(--accent); font-size: 36px; font-weight: 900;
   border: 4px solid color-mix(in srgb, var(--text) 90%, transparent);
 }
-.dot { position: absolute; right: 2px; bottom: 8px; width: 18px; height: 18px; border-radius: 50%; background: var(--online); border: 2px solid rgba(255,255,255,.78); box-shadow: 0 3px 10px rgba(74,155,116,.42); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; align-content: center; }
 .chip {
   border: 1px solid rgba(255,255,255,.66);
@@ -1556,14 +1578,13 @@ body {
   padding: 6px 10px;
   color: var(--muted);
   background: var(--chip-bg);
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  backdrop-filter: blur(var(--chip-blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--chip-blur)) saturate(1.25);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.72), 0 4px 12px rgba(24,56,57,.08);
   font-weight: 800;
   font-size: 12px;
   white-space: nowrap;
 }
-.chip.ok { color: var(--online); }
 .section-title {
   color: var(--accent);
   font-size: 14px;
@@ -1572,6 +1593,7 @@ body {
   letter-spacing: 1px;
 }
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.system-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; align-items: stretch; }
 .content-grid > div { display: flex; flex-direction: column; }
@@ -1615,6 +1637,23 @@ body {
 }
 .mini.panel {
   border-color: rgba(255,255,255,.58);
+}
+.system-grid .mini {
+  min-height: 128px;
+  padding: 16px 12px;
+}
+.system-grid .label {
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.system-grid .value {
+  font-size: 23px;
+  line-height: 1.05;
+}
+.system-grid .metric-text {
+  font-size: 11.5px;
+  line-height: 1.32;
+  max-width: none;
 }
 .label { color: var(--accent); font-size: 11px; font-weight: 900; margin-bottom: 8px; }
 .value { font-size: 16px; font-weight: 900; overflow-wrap: anywhere; }
@@ -1660,9 +1699,8 @@ body {
 .session-bar { height: 7px; background: rgba(255,255,255,.34); border-radius: 999px; overflow: hidden; margin-top: 4px; box-shadow: inset 0 1px 2px rgba(25,53,54,.10); }
 .session-fill { height: 100%; width: var(--w); border-radius: 999px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
 .session-value { color: var(--muted); font-size: 13.5px; font-weight: 900; text-align: right; }
-.model-panel { padding: 16px; }
-.model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
-.model-chart-card { min-height: 220px; }
+.model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; margin-top: 14px; }
+.model-chart-card { padding: 16px; min-height: 286px; flex: 1; }
 .model-chart-head { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
 .model-kpi { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: color-mix(in srgb, var(--panel-bg) 78%, transparent); }
 .model-kpi .label { margin-bottom: 6px; }
@@ -1673,13 +1711,15 @@ body {
 .model-legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 900; max-width: 180px; }
 .model-swatch { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
 .model-legend-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.model-lists { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.model-list { padding: 14px 16px; min-height: 220px; overflow: hidden; }
+.model-grid > div { display: flex; flex-direction: column; }
+.model-list { padding: 12px 14px; min-height: 286px; flex: 1; overflow: hidden; }
 .model-list-title { color: var(--accent); font-size: 15px; font-weight: 900; margin-bottom: 12px; }
-.model-row { display: grid; grid-template-columns: 1fr 78px; align-items: center; gap: 12px; padding: 8px 0; min-height: 33px; border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, transparent); }
+.model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 6px 0; min-height: 38px; border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, transparent); }
 .model-row:last-child { border-bottom: 0; }
-.model-name { font-size: 14.5px; font-weight: 900; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.model-value { color: var(--muted); font-size: 14px; font-weight: 900; text-align: right; }
+.model-name { font-size: 13.5px; font-weight: 900; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-value { color: var(--accent); font-size: 13px; font-weight: 900; text-align: right; white-space: nowrap; }
+.model-detail { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px 8px; color: var(--muted); font-size: 10.5px; line-height: 1.12; font-weight: 800; }
+.model-detail span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rank-row { display: grid; grid-template-columns: 1fr 92px; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--accent) 12%, transparent); }
 .rank-row:last-child { border-bottom: 0; }
 .rank-name { font-size: 13px; font-weight: 800; overflow-wrap: anywhere; }
@@ -1693,47 +1733,32 @@ body {
 <body>
 <div class="page" style="{{ theme_style }} {{ background_style }}">
   <div class="shell">
+    <div class="masthead">
+      <div class="title">{{ title }}</div>
+      <div class="rule"></div>
+    </div>
     <div class="top-grid">
       <section class="hero panel">
-        <div class="title">{{ title }}</div>
-        <div class="rule"></div>
-        <div class="bot-name">{{ bot.name }}</div>
         <div class="hero-row">
           <div class="avatar-wrap">
             {% if bot.avatar %}<img class="avatar" src="{{ bot.avatar }}">{% else %}<div class="avatar-fallback">A</div>{% endif %}
-            <div class="dot"></div>
           </div>
           <div class="chips">
-            <div class="chip">{{ bot.id }}</div>
-            <div class="chip ok">在线</div>
+            <div class="chip">{{ session.model }}</div>
+            <div class="chip">人格 {{ session.persona }}</div>
             <div class="chip">好友 {{ platform.friends }}</div>
             <div class="chip">群聊 {{ platform.groups }}</div>
-            <div class="chip">模型 {{ session.model }}</div>
-            <div class="chip">人格 {{ session.persona }}</div>
-            <div class="chip">{{ bot.status }}</div>
           </div>
         </div>
       </section>
 
-      <div>
-        <div class="section-title" style="margin-top: 2px;">系统性能</div>
-        <div class="metrics">
-          {% for item in [system.cpu, system.memory, system.process_memory] %}
-          <div class="metric panel">
-            <div class="ring" style="--p: {{ item.percent if item.percent is not none else 0 }}" data-value="{{ (item.percent|string + '%') if item.percent is not none else '-' }}"></div>
-            <div class="metric-name">{{ ["CPU", "内存", "进程内存"][loop.index0] }}</div>
-            <div class="metric-text">{{ item.text }}<br>{{ item.sub }}</div>
-          </div>
-          {% endfor %}
-        </div>
+      <div class="system-grid">
+        {% set item = system.process_memory %}
+        <div class="mini panel"><div class="label">进程内存</div><div class="value">{{ item.text }}</div><div class="metric-text" style="text-align:left;margin-top:8px;">{{ item.sub }}</div></div>
+        {% for item in dashboard.cards %}
+        <div class="mini panel"><div class="label">{{ item.label }}</div><div class="value">{{ item.value }}</div><div class="metric-text" style="text-align:left;margin-top:8px;">{{ item.sub }}</div></div>
+        {% endfor %}
       </div>
-    </div>
-
-    <div class="section-title">WebUI 统计概览</div>
-    <div class="dashboard-grid">
-      {% for item in dashboard.cards %}
-      <div class="mini panel"><div class="label">{{ item.label }}</div><div class="value">{{ item.value }}</div><div class="metric-text" style="text-align:left;margin-top:8px;">{{ item.sub }}</div></div>
-      {% endfor %}
     </div>
 
     <div class="content-grid">
@@ -1794,10 +1819,10 @@ body {
     </div>
 
     {% if show_model_stats %}
-    <div class="section-title">模型调用</div>
-    <div class="model-panel panel">
-      <div class="model-grid">
-        <div class="model-chart-card">
+    <div class="model-grid">
+      <div>
+        <div class="section-title">模型调用</div>
+        <div class="model-chart-card panel">
           <div class="model-chart-head">
             <div class="model-kpi"><div class="label">最近 1 天 TOKEN</div><div class="value">{{ dashboard.model_total_tokens }}</div></div>
             <div class="model-kpi"><div class="label">调用次数</div><div class="value">{{ dashboard.model_calls }}</div></div>
@@ -1830,17 +1855,24 @@ body {
           {% endfor %}
           </div>
         </div>
-        <div class="model-lists">
-          <div class="model-list panel">
-            <div class="model-list-title">模型调用排名</div>
-            {% if dashboard.model_daily_rank %}
-            {% for item in dashboard.model_daily_rank %}
-            <div class="model-row"><div class="model-name">{{ item.name }}</div><div class="model-value">{{ item.value }}</div></div>
-            {% endfor %}
-            {% else %}
-            <div class="message-empty">暂无 Model 统计</div>
-            {% endif %}
+      </div>
+      <div>
+        <div class="section-title">模型调用排名</div>
+        <div class="model-list panel">
+          {% if dashboard.model_daily_rank %}
+          {% for item in dashboard.model_daily_rank %}
+          <div class="model-row">
+            <div class="model-name">{{ item.name }}</div>
+            <div class="model-value">{{ item.value }}</div>
+            <div class="model-detail">
+              <span>调用 {{ item.calls }}</span><span>输入 {{ item.input }}</span><span>输出 {{ item.output }}</span><span>缓存 {{ item.cached }}</span>
+              <span>命中 {{ item.cache_rate }}</span><span>延迟 {{ item.latency }}</span><span>成功 {{ item.success }}</span><span></span>
+            </div>
           </div>
+          {% endfor %}
+          {% else %}
+          <div class="message-empty">暂无 Model 统计</div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -1992,16 +2024,6 @@ body {
         if bot_id and bot_id != "-":
             return f"https://q1.qlogo.cn/g?b=qq&nk={bot_id}&s=640"
         return ""
-
-    def _normalize_file_url(self, value: str) -> str:
-        if not value:
-            return ""
-        if value.startswith(("http://", "https://", "file://")):
-            return value
-        path = Path(value)
-        if path.exists():
-            return path.resolve().as_uri()
-        return value
 
     def _safe(self, value: Any) -> str:
         return html.escape(str(value), quote=True)

@@ -11,20 +11,6 @@
     "default": "AstrBot",
     "hint": "无法从平台读取机器人昵称时使用。"
   },
-  "avatar_file": {
-    "description": "默认头像图片",
-    "type": "file",
-    "file_types": [".png", ".jpg", ".jpeg", ".webp"],
-    "default": [],
-    "hint": "平台头像获取失败时使用。"
-  },
-  "background_file": {
-    "description": "背景图片",
-    "type": "file",
-    "file_types": [".png", ".jpg", ".jpeg", ".webp"],
-    "default": [],
-    "hint": "上传后会自动应用高斯模糊、增强饱和度和液态玻璃背景效果。"
-  },
   "show_model_stats": {
     "description": "显示模型调用统计",
     "type": "bool",
