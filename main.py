@@ -234,7 +234,7 @@ class StatusCardPlugin(Star):
         return {
             "cards": [
                 {"label": "平台实例数", "value": self._display_number(platform_count), "sub": "当前已加载平台"},
-                {"label": "今日模型调用", "value": self._fmt_count(int(model_tokens or 0)) if model_tokens else "-", "sub": "词元 Tokens"},
+                {"label": "今日模型调用", "value": self._fmt_count(int(model_tokens or 0)) if model_tokens else "-", "sub": "词元 Token"},
                 {
                     "label": "会话 Token",
                     "value": session.get("token_total", "-"),
@@ -475,8 +475,8 @@ class StatusCardPlugin(Star):
             },
             "process_memory": {
                 "percent": round(process_percent, 1),
-                "text": self._fmt_bytes(process_rss),
-                "sub": f"系统内存 {self._fmt_bytes(vm.total)}",
+                "text": self._fmt_gb(process_rss),
+                "sub": f"系统内存 {self._fmt_gb(vm.total)}",
             },
             "rows": [
                 ("OS", f"{platform.system()} {platform.release()} ({platform.machine()})"),
@@ -738,9 +738,9 @@ class StatusCardPlugin(Star):
             {"label": "请求数", "value": f"{self._llm_requests:,}"},
             {"label": "错误率", "value": error_rate},
             {"label": "缓存命中", "value": cache_rate},
-            {"label": "输入 TOKEN", "value": self._fmt_count(self._input_tokens) if self._input_tokens else "-"},
-            {"label": "输出 TOKEN", "value": self._fmt_count(self._output_tokens) if self._output_tokens else "-"},
-            {"label": "总 TOKEN", "value": self._fmt_count(self._input_tokens + self._output_tokens) if (self._input_tokens + self._output_tokens) else "-"},
+            {"label": "输入 Token", "value": self._fmt_count(self._input_tokens) if self._input_tokens else "-"},
+            {"label": "输出 Token", "value": self._fmt_count(self._output_tokens) if self._output_tokens else "-"},
+            {"label": "总 Token", "value": self._fmt_count(self._input_tokens + self._output_tokens) if (self._input_tokens + self._output_tokens) else "-"},
         ]
 
     def _tool_rank(self) -> list[dict[str, Any]]:
@@ -1797,7 +1797,7 @@ body {
 
       {% if show_model_stats %}
       <div>
-        <div class="section-title">最近一天会话 token 排名</div>
+        <div class="section-title">最近一天会话 Token 排名</div>
         <div class="session-panel panel">
           {% if dashboard.session_rank %}
             {% for item in dashboard.session_rank %}
@@ -1824,12 +1824,12 @@ body {
         <div class="section-title">模型调用</div>
         <div class="model-chart-card panel">
           <div class="model-chart-head">
-            <div class="model-kpi"><div class="label">最近 1 天 TOKEN</div><div class="value">{{ dashboard.model_total_tokens }}</div></div>
+            <div class="model-kpi"><div class="label">最近 1 天 Token</div><div class="value">{{ dashboard.model_total_tokens }}</div></div>
             <div class="model-kpi"><div class="label">调用次数</div><div class="value">{{ dashboard.model_calls }}</div></div>
             <div class="model-kpi"><div class="label">调用成功率</div><div class="value">{{ dashboard.model_success_rate }}</div></div>
           </div>
           <div class="model-chart-meta">
-            <span>最近 1 天模型 token 柱状图</span>
+            <span>最近 1 天模型 Token 柱状图</span>
             <span>峰值 {{ dashboard.model_chart.max }} · 当前 {{ dashboard.model_chart.latest }}</span>
           </div>
           <div class="model-chart">
@@ -1960,6 +1960,12 @@ body {
         if idx == 0:
             return f"{value:.0f} {units[idx]}"
         return f"{value:.2f} {units[idx]}"
+
+    def _fmt_gb(self, value: float) -> str:
+        try:
+            return f"{float(value) / (1024 ** 3):.2f} GB"
+        except Exception:
+            return "-"
 
     def _fmt_rate(self, value: float) -> str:
         return f"{self._fmt_bytes(value)}/s"

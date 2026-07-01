@@ -15,7 +15,7 @@
     "description": "显示模型调用统计",
     "type": "bool",
     "default": true,
-    "hint": "控制模型调用柱状图、模型调用排名和会话 token 排名。"
+    "hint": "控制模型调用柱状图、模型调用排名和会话 Token 排名。"
   },
   "show_message_stats": {
     "description": "显示消息统计",
