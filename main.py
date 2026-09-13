@@ -68,6 +68,7 @@ class StatusCardPlugin(Star):
     @filter.command("状态", alias=["status"])
     async def status_card(self, event: AstrMessageEvent):
         """生成机器人状态图。"""
+        event.stop_event()
         try:
             data = await self._collect_status_data(event)
             image = await self.html_render(
